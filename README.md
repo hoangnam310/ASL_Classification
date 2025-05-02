@@ -1,6 +1,6 @@
 # ASL_Detector
 
-### WITHOUT CONDA:
+### WITHOUT CONDA ON WINDOWS:
 py -3.12 -m venv venv312
 .\venv312\Scripts\activate
 pip install google-generativeai
