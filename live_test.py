@@ -5,7 +5,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import time
-from analyze import analyze_asl
+from analyze_nebius import analyze_asl_nebius
+from analyze_gemini import analyze_asl_gemini
 import threading
 
 class HandGestureCNN(nn.Module):
@@ -33,13 +34,13 @@ class HandGestureCNN(nn.Module):
         x = self.fc3(x)
         return x
 
-with open('label_map_alphabet.pickle', 'rb') as f:
+with open('models/label_map_alphabet_both.pickle', 'rb') as f:
     label_info = pickle.load(f)
     label_map = label_info['label_map_alphabet']
     reverse_label_map = label_info['reverse_label_map_alphabet']
 
 model = HandGestureCNN(len(label_map))
-model.load_state_dict(torch.load('best_cnn_model_alphabet.pth', map_location=torch.device('cpu')))
+model.load_state_dict(torch.load('models/best_cnn_model_alphabet_both.pth', map_location=torch.device('cpu')))
 model.eval()
 
 cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
@@ -58,8 +59,8 @@ no_hand_count = 0
 pause_threshold = 15
 cooldown_active = False
 cooldown_start = 0
-required_hold_time = 0.8
-stable_threshold = 8
+required_hold_time = 0.5
+stable_threshold = 5
 # required_hold_time = 1.0
 # stable_threshold = 10
 letter_history = []
@@ -181,7 +182,8 @@ while True:
     key = cv2.waitKey(1) & 0xFF
     
     def analyze_and_log(text):
-        analysis = analyze_asl(text)
+        # analysis = analyze_asl_nebius(text)
+        analysis = analyze_asl_gemini(text)
         print(analysis)
         sentence_log.append(f"{analysis}")
         if len(sentence_log) > 3:

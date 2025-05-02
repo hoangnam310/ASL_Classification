@@ -5,3 +5,5 @@ output_folder
 train_data_set
 sign_language
 old_input_video
+venv
+venv312
