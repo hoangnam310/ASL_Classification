@@ -1,4 +1,16 @@
 # ASL_Detector
+
+### WITHOUT CONDA:
+py -3.12 -m venv venv312
+.\venv312\Scripts\activate
+pip install google-generativeai
+pip install python-dotenv
+pip install opencv-python
+pip install mediapipe
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install openai
+
+### WITH CONDA:
 Environment setup: 
 conda create -n sign_language python=3.11
 pip install -r requirements.txt
