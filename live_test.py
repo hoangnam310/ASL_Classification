@@ -34,13 +34,13 @@ class HandGestureCNN(nn.Module):
         x = self.fc3(x)
         return x
 
-with open('models/label_map_sequences.pickle', 'rb') as f:
+with open('models/label_map_alphabet_both.pickle', 'rb') as f:
     label_info = pickle.load(f)
     label_map = label_info['label_map']
     reverse_label_map = label_info['reverse_label_map']
 
 model = HandGestureCNN(len(label_map))
-model.load_state_dict(torch.load('models/best_lstm_model_sequences.pth', map_location=torch.device('cpu')))
+model.load_state_dict(torch.load('models/best_cnn_model_alphabet_both.pth', map_location=torch.device('cpu')))
 model.eval()
 cap = cv2.VideoCapture(0)
 # cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)

@@ -5,8 +5,13 @@ output_folder
 train_data_set
 sign_language
 old_input_video
+<<<<<<< HEAD
 .env
 venv
 venv312
 venv311
 data_alphabet_sequences
+=======
+venv
+venv312
+>>>>>>> 8801dc7a1a3bc404ef63c336ba814a4b0f8dc521
