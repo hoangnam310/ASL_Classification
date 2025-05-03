@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 numpy==1.23.5
 opencv-python==4.7.0.68
 mediapipe==0.10.5
@@ -7,3 +8,31 @@ matplotlib==3.9.4
 scikit-learn==1.2.0
 tqdm==4.67.1
 openai
+=======
+google-generativeai
+python-dotenv
+opencv-python
+mediapipe
+torch
+torchvision
+torchaudio
+openai
+
+# numpy==1.23.5
+# opencv-python==4.7.0.68
+# mediapipe==0.10.5
+# torch==2.7.0
+# torchvision==0.22.0
+# matplotlib==3.9.4
+# scikit-learn==1.2.0
+# tqdm==4.67.1
+
+# numpy==1.23.5
+# opencv-python==4.7.0.68
+# mediapipe==0.10.5
+# torch==2.7.0
+# torchvision==0.22.0
+# matplotlib==3.9.4
+# scikit-learn==1.2.0
+# tqdm==4.67.1
+>>>>>>> 5d7c504b6e717cd1c4306af13e49a71b3bb362a9

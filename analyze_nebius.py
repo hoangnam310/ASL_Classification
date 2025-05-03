@@ -3,7 +3,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import json
 
-def analyze_asl(text):
+def analyze_asl_nebius(text):
     """
     Analyze ASL space-separated letters and convert to meaningful English sentences
     
@@ -72,6 +72,8 @@ def analyze_asl(text):
     analysis = response_json['choices'][0]['message']['content']
     
     return analysis
+
+# ================================================================================
 
 # def main():
 #     """
