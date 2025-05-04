@@ -30,6 +30,7 @@ It contains 4 main sections:
   2. Create Dataset – Preprocess and structure the collected data.
   3. Train Model – Train a Convolutional Neural Network (CNN) using PyTorch.
   4. Live Test – Use your webcam to test the trained model in real-time.
+
 If you want to use the translation part, remember to .env file with your API KEY. It should look like this `GEMINI_API_KEY=<your_key>`
 Run `new_live_test_3D.py` to try the translation from ASL to English.
 
