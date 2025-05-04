@@ -5,6 +5,7 @@
 ## Environment Setup
 
 ###  Windows (without Conda)
+'''
 bash
 py -3.12 -m venv venv312
 .\venv312\Scripts\activate
