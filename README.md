@@ -2,7 +2,7 @@
 
 **ASL_Detector** is a deep learning-based application that detects American Sign Language (ASL) gestures and translates them into English using Gemini or Nebius API.
 
-## ⚙Environment Setup
+## Environment Setup
 
 ###  Windows (without Conda)
 bash
