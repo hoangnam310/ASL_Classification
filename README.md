@@ -1,6 +1,6 @@
 # ASL Detector
 
-**ASL_Detector** is a deep learning-based application that detects American Sign Language (ASL) gestures and translates them into English using Gemini or Nebius API.
+**ASL_Detector** is a LSTM model that detects American Sign Language (ASL) gestures and translates them into English using Gemini or Nebius API.
 
 ## Environment Setup
 
