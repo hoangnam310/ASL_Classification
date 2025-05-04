@@ -10,24 +10,31 @@ import threading
 import os
 from analyze_gemini import analyze_asl_gemini
 
-MODEL_SAVE_DIR = './models' 
-BEST_MODEL_PATH = os.path.join(MODEL_SAVE_DIR, 'best_lstm_model_sequences_sorted.pth')
-LABEL_MAP_PATH = os.path.join(MODEL_SAVE_DIR, 'label_map_sequences.pickle')
+# --- Configuration ---
+MODEL_SAVE_DIR = './models' # IMPORTANT: Point to the directory containing the 3D-trained model
+BEST_MODEL_PATH = os.path.join(MODEL_SAVE_DIR, 'best_lstm_model_sequences_sorted_1.pth') # Assumed name for 3D model
+LABEL_MAP_PATH = os.path.join(MODEL_SAVE_DIR, 'label_map_sequences.pickle') # Assumed name for 3D label map
 
 SEQUENCE_LENGTH = 10
 NUM_LANDMARKS = 21
-FEATURES_PER_LANDMARK = 2 # 2 if 2 dimension
-FEATURES_PER_HAND = NUM_LANDMARKS * FEATURES_PER_LANDMARK # 42
-TARGET_FEATURES_PER_FRAME = FEATURES_PER_HAND * 2         # 84 
-PREDICTION_THRESHOLD = 0.7  
-PAUSE_THRESHOLD_FRAMES = 10   # Frames without hands to trigger word break
-WINDOW_NAME = 'Live ASL Recognition (LSTM)'
+# --- >>> CHANGE 1: Update Feature Constants for 3D <<< ---
+USE_Z_COORDINATE = True # Explicitly set for clarity
+FEATURES_PER_LANDMARK = 3 # X, Y, Z
+FEATURES_PER_HAND = NUM_LANDMARKS * FEATURES_PER_LANDMARK # 21 * 3 = 63
+TARGET_FEATURES_PER_FRAME = FEATURES_PER_HAND * 2         # 63 * 2 = 126
+# --- <<< End of CHANGE 1 >>> ---
 
-stable_threshold = 8  # Frames needed for non-J/Z letter stability
-required_hold_time = 0.0  # Min time a stable non-J/Z letter needs to be held (can be 0)
-cooldown_time = 1.5  # Min time before *any* letter (incl. J/Z) can be added again
+PREDICTION_THRESHOLD = 0.7
+PAUSE_THRESHOLD_FRAMES = 10   # Frames without hands to trigger word break
+WINDOW_NAME = 'Live ASL Recognition (LSTM - 3D)'
+
+# Stability and cooldown settings (remain the same)
+stable_threshold = 8
+required_hold_time = 0.0
+cooldown_time = 1.5
 
 # --- Define LSTM Model Class (Must match training architecture) ---
+# (Model class definition remains the same as provided)
 class HandGestureLSTM(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, num_classes, dropout_prob=0.5):
         super(HandGestureLSTM, self).__init__()
@@ -40,12 +47,9 @@ class HandGestureLSTM(nn.Module):
         self.fc = nn.Linear(hidden_size, num_classes)
 
     def forward(self, x):
-        # Initialize hidden and cell states
         h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
         c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
-        # Detach states to prevent backprop through time if not needed
         out, _ = self.lstm(x, (h0.detach(), c0.detach()))
-        # We only need the output of the last time step
         out = self.dropout(out[:, -1, :])
         out = self.fc(out)
         return out
@@ -69,7 +73,6 @@ if not os.path.exists(LABEL_MAP_PATH):
 try:
     with open(LABEL_MAP_PATH, 'rb') as f:
         label_info = pickle.load(f)
-        # Ensure the expected keys exist
         if 'label_map' not in label_info or 'reverse_label_map' not in label_info:
              raise ValueError("Label map file missing 'label_map' or 'reverse_label_map' key.")
         label_map = label_info['label_map']
@@ -86,8 +89,10 @@ if not os.path.exists(BEST_MODEL_PATH):
     print(f"Error: Model file not found at {BEST_MODEL_PATH}.")
     exit()
 
-input_size = TARGET_FEATURES_PER_FRAME # 84
-hidden_size = 128 
+# --- >>> CHANGE 2: Update Input Size for Model Initialization <<< ---
+input_size = TARGET_FEATURES_PER_FRAME # Should now be 126
+# --- <<< End of CHANGE 2 >>> ---
+hidden_size = 128
 num_layers = 2
 dropout_prob = 0.5
 
@@ -96,12 +101,12 @@ try:
     model.load_state_dict(torch.load(BEST_MODEL_PATH, map_location=device))
     model.to(device)
     model.eval()
-    print("Model loaded successfully.")
+    print(f"Model loaded successfully. Expected input size: {input_size}")
 except Exception as e:
     print(f"Error loading model state dictionary: {e}")
     if "size mismatch" in str(e):
         print("This often means the model architecture (input_size, hidden_size, num_layers, num_classes) defined here")
-        print("does not match the architecture of the saved model file.")
+        print(f"(Expected input_size={input_size}) does not match the architecture of the saved model file.")
     exit()
 
 
@@ -110,58 +115,63 @@ mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
 hands = mp_hands.Hands(
-    static_image_mode=False,    
-    max_num_hands=2,              
-    min_detection_confidence=0.5, 
-    min_tracking_confidence=0.5   
+    static_image_mode=False,
+    max_num_hands=2,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5
 )
 
-# --- Helper Function for Hand Processing ---
-def process_hand_landmarks(landmarks, image_shape):
+# --- >>> CHANGE 3: Use the Correct Normalization Function <<< ---
+# This function MUST be identical to the one used for creating the 3D dataset
+def normalize_landmarks(landmarks, image_shape):
     """
-    Extracts and normalizes hand landmarks relative to the hand's bounding box.
-    Returns a dictionary containing normalized features and bounding box coords, or None.
+    Normalizes landmarks relative to the hand's bounding box.
+    Includes Z coordinate if USE_Z_COORDINATE is True (which it is here).
+    Returns a list of features (63) or None if normalization fails.
     """
-    if not landmarks: return None
+    if not landmarks:
+        return None
 
-    image_height, image_width = image_shape[:2]
+    # Extract coordinates into lists
+    x_coords_px = [lm.x * image_shape[1] for lm in landmarks.landmark] # Pixel coords
+    y_coords_px = [lm.y * image_shape[0] for lm in landmarks.landmark]
+    # Z coordinate from MediaPipe is relative depth to wrist, usually needs less normalization
+    z_coords = [lm.z for lm in landmarks.landmark]
 
-    # Get absolute pixel coordinates
-    x_coords = [lm.x * image_width for lm in landmarks.landmark]
-    y_coords = [lm.y * image_height for lm in landmarks.landmark]
+    if not x_coords_px or not y_coords_px: # Should not happen if landmarks exist, but check
+        return None
 
     # Calculate bounding box
-    x_min, x_max = min(x_coords), max(x_coords)
-    y_min, y_max = min(y_coords), max(y_coords)
-    box_width = x_max - x_min
-    box_height = y_max - y_min
+    x_min, x_max = min(x_coords_px), max(x_coords_px)
+    y_min, y_max = min(y_coords_px), max(y_coords_px)
 
-    # Avoid division by zero if bounding box is degenerate
-    if box_width == 0 or box_height == 0: return None
+    # Avoid division by zero for degenerate bounding boxes (e.g., hand at edge)
+    width = x_max - x_min
+    height = y_max - y_min
+    if width == 0 or height == 0:
+        # print(f"Warning: Degenerate bounding box detected (width={width}, height={height}). Skipping normalization for this hand.")
+        return None # Indicate failure
 
-    # Normalize landmarks relative to the bounding box top-left corner
+    # Normalize x, y relative to the bounding box
     normalized_features = []
-    for lm in landmarks.landmark:
-        # Calculate position relative to top-left corner of the box
-        relative_x = lm.x * image_width - x_min
-        relative_y = lm.y * image_height - y_min
-        # Normalize by box dimensions
-        norm_x = relative_x / box_width
-        norm_y = relative_y / box_height
+    for i, lm in enumerate(landmarks.landmark):
+        # Normalize X, Y relative to bounding box
+        norm_x = (x_coords_px[i] - x_min) / width
+        norm_y = (y_coords_px[i] - y_min) / height
         normalized_features.extend([norm_x, norm_y])
+        # Append Z coordinate
+        # Z is often used directly or normalized differently (e.g., scaling)
+        # Here, we include it as is, matching the likely dataset creation logic.
+        normalized_features.append(z_coords[i])
 
+    # Final check on feature count - should be 63 now
     if len(normalized_features) != FEATURES_PER_HAND:
-         print(f"Warning: Expected {FEATURES_PER_HAND} features, got {len(normalized_features)}. Padding/truncating.")
-         normalized_features = normalized_features[:FEATURES_PER_HAND] # Truncate
-         while len(normalized_features) < FEATURES_PER_HAND: # Pad
-             normalized_features.append(0.0)
+        print(f"Warning in normalize_landmarks: Incorrect feature count after normalization: {len(normalized_features)}, expected {FEATURES_PER_HAND}.")
+        return None # Return None on error
 
+    return normalized_features
+# --- <<< End of CHANGE 3 >>> ---
 
-    return {
-        'features': normalized_features,
-        'x_min': x_min, 'y_min': y_min,
-        'x_max': x_max, 'y_max': y_max
-    }
 
 # --- Live Test Initialization ---
 cap = cv2.VideoCapture(0) # Use 0 for default webcam
@@ -173,8 +183,8 @@ if not cap.isOpened():
 sequence_buffer = deque(maxlen=SEQUENCE_LENGTH) # Stores feature vectors for recent frames
 letter_history = deque(maxlen=stable_threshold) # Stores recent non-J/Z predictions for stability check
 
-# State variables
-sentence = ""               
+# State variables (remain the same)
+sentence = ""
 sentence_log = []
 no_hand_count = 0
 message_text = ""
@@ -189,12 +199,12 @@ cooldown_start = 0
 frame_count = 0
 start_time = time.time()
 
-print("\n--- Starting Live Recognition ---")
+print("\n--- Starting Live Recognition (3D) ---")
 print(f"Model: {BEST_MODEL_PATH}")
 print(f"Confidence Threshold: {PREDICTION_THRESHOLD}")
 print(f"Stability Threshold (frames): {stable_threshold}")
 print(f"Cooldown Time (seconds): {cooldown_time}")
-print("Press 'A' to analyze current sentence with Gemini.")
+# print("Press 'A' to analyze current sentence with Gemini.") # Uncomment if using API
 print("Press 'Q' or 'Esc' to exit.")
 print("------------------------------------")
 
@@ -211,26 +221,24 @@ while True:
     display_frame = frame.copy() # Create a copy for drawing annotations
 
     # --- 2. MediaPipe Hand Tracking ---
-    # Convert frame to RGB (MediaPipe expects RGB)
     image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    # Improve performance by marking image as not writeable before processing
     image_rgb.flags.writeable = False
     results = hands.process(image_rgb)
-    # Mark image as writeable again for drawing
     image_rgb.flags.writeable = True
 
     # --- 3. Cooldown Check ---
     if cooldown_active and frame_time - cooldown_start >= cooldown_time:
         cooldown_active = False
-        candidate_letter = None # Clear candidate when cooldown ends
+        candidate_letter = None
 
     # --- 4. Landmark Extraction and Feature Processing ---
-    frame_features = np.zeros(TARGET_FEATURES_PER_FRAME, dtype=np.float32) # Initialize empty features
+    # --- >>> CHANGE 4: Update Feature Vector Population <<< ---
+    frame_features = np.zeros(TARGET_FEATURES_PER_FRAME, dtype=np.float32) # Initialize 126 zeros
     hands_detected_this_frame = bool(results.multi_hand_landmarks)
+    detected_hands_data = [] # Store tuples of (wrist_x, normalized_features) for sorting
 
     if hands_detected_this_frame:
         no_hand_count = 0 # Reset no-hand counter
-        processed_hands = []
 
         # Process landmarks for up to 2 detected hands
         for hand_idx, hand_landmarks in enumerate(results.multi_hand_landmarks[:2]):
@@ -240,208 +248,186 @@ while True:
                 mp_drawing_styles.get_default_hand_landmarks_style(),
                 mp_drawing_styles.get_default_hand_connections_style())
 
-            # Extract and normalize features for this hand
-            hand_data = process_hand_landmarks(hand_landmarks, (H, W))
-            if hand_data:
-                processed_hands.append(hand_data)
-                # Draw bounding box around the hand
-                x1, y1 = int(hand_data['x_min']) - 10, int(hand_data['y_min']) - 10
-                x2, y2 = int(hand_data['x_max']) + 10, int(hand_data['y_max']) + 10
-                box_color = (0, 255, 0) if hand_idx == 0 else (0, 200, 255) # Green for 1st, Yellow for 2nd
-                cv2.rectangle(display_frame, (max(0, x1), max(0, y1)), (min(W, x2), min(H, y2)), box_color, 2)
+            # --- Use the correct normalize_landmarks function ---
+            norm_features = normalize_landmarks(hand_landmarks, (H, W))
+            if norm_features:
+                # Get wrist x-coordinate for sorting
+                wrist_x = hand_landmarks.landmark[0].x
+                detected_hands_data.append((wrist_x, norm_features))
 
-        # Populate the frame_features array
-        if len(processed_hands) >= 1:
-            features1 = processed_hands[0]['features']
-            len1 = min(len(features1), FEATURES_PER_HAND)
-            frame_features[:len1] = features1[:len1]
-            if len(processed_hands) >= 2:
-                features2 = processed_hands[1]['features']
-                len2 = min(len(features2), FEATURES_PER_HAND)
-                frame_features[FEATURES_PER_HAND : FEATURES_PER_HAND + len2] = features2[:len2]
+                # Draw bounding box (optional, based on 2D coords for simplicity)
+                x_coords = [lm.x * W for lm in hand_landmarks.landmark]
+                y_coords = [lm.y * H for lm in hand_landmarks.landmark]
+                x_min, x_max = min(x_coords), max(x_coords)
+                y_min, y_max = min(y_coords), max(y_coords)
+                x1, y1 = int(x_min) - 10, int(y_min) - 10
+                x2, y2 = int(x_max) + 10, int(y_max) + 10
+                box_color = (0, 255, 0) if hand_idx == 0 else (0, 200, 255)
+                cv2.rectangle(display_frame, (max(0, x1), max(0, y1)), (min(W, x2), min(H, y2)), box_color, 2)
+            # else: # Optional: Handle normalization failure if needed
+                # print(f"Normalization failed for hand {hand_idx}")
+
+        # Sort detected hands by horizontal position (leftmost first)
+        detected_hands_data.sort(key=lambda item: item[0])
+
+        # Populate the frame_features array (now 126 features)
+        num_hands_to_assign = min(len(detected_hands_data), 2)
+        for i in range(num_hands_to_assign):
+            hand_features = detected_hands_data[i][1] # Get the normalized features (should be 63)
+            start_index = i * FEATURES_PER_HAND
+            end_index = start_index + FEATURES_PER_HAND
+            # Ensure hand_features has the correct length before assignment
+            if len(hand_features) == FEATURES_PER_HAND:
+                 frame_features[start_index:end_index] = hand_features
+            else:
+                 # This shouldn't happen if normalize_landmarks works correctly, but good to check
+                 print(f"Warning: Hand {i} features had unexpected length {len(hand_features)}, expected {FEATURES_PER_HAND}. Skipping assignment.")
+
+    # --- <<< End of CHANGE 4 >>> ---
     else:
-        # No hands detected in this frame
+        # No hands detected
         no_hand_count += 1
-        # Reset stability tracking immediately when hands disappear
         letter_history.clear()
         candidate_letter = None
 
-    # Add the processed features (or zeros if no hands) to the sequence buffer
+    # Add the processed features (or zeros) to the sequence buffer
     sequence_buffer.append(frame_features)
 
     # --- 5. Prediction ---
-    prediction = None # Prediction variable for the STABILITY check
-    current_prediction = None # Prediction from this frame's inference
+    prediction = None
+    current_prediction = None
+    current_confidence = 0.0 # Initialize confidence
 
-    # Only predict if sequence buffer is full AND hands were detected
     if hands_detected_this_frame and len(sequence_buffer) == SEQUENCE_LENGTH:
         try:
-            # Prepare input tensor for the model
             input_sequence = np.array(list(sequence_buffer), dtype=np.float32)
-            # Add batch dimension (batch_size=1)
             input_tensor = torch.FloatTensor(input_sequence).unsqueeze(0).to(device)
 
-            # Perform inference
-            with torch.inference_mode(): # More efficient than torch.no_grad() for inference
+            with torch.inference_mode():
                 outputs = model(input_tensor)
                 probabilities = torch.nn.functional.softmax(outputs, dim=1)
-                # Get the top prediction and its confidence
                 confidence, predicted_idx = torch.max(probabilities, 1)
                 pred_idx = predicted_idx.item()
                 conf_val = confidence.item()
 
-                # Check if confidence meets the threshold
                 if conf_val >= PREDICTION_THRESHOLD:
                     if pred_idx in reverse_label_map:
-                        # Get the predicted letter string
                         current_prediction = reverse_label_map[pred_idx]
-                        current_confidence = conf_val
+                        current_confidence = conf_val # Store confidence
 
-                        # --- Draw Prediction Text (Moved Earlier) ---
-                        # Display the current prediction regardless of type (J/Z or other)
-                        try:
-                            first_hand = results.multi_hand_landmarks[0]
-                            # Calculate position near the top of the first hand
-                            x_coords = [lm.x for lm in first_hand.landmark]
-                            y_coords = [lm.y for lm in first_hand.landmark]
-                            x_min, y_min = min(x_coords), min(y_coords)
-                            x1_text = max(0, int(x_min * W) - 10)
-                            y1_text = max(0, int(y_min * H) - 10)
+                        # --- Draw Prediction Text (Near Hand) ---
+                        # (Drawing logic remains the same, uses current_prediction and current_confidence)
+                        if results.multi_hand_landmarks: # Check again if hands still exist
+                            try:
+                                first_hand = results.multi_hand_landmarks[0]
+                                x_coords = [lm.x for lm in first_hand.landmark]
+                                y_coords = [lm.y for lm in first_hand.landmark]
+                                x_min, y_min = min(x_coords), min(y_coords)
+                                x1_text = max(0, int(x_min * W) - 10)
+                                y1_text = max(0, int(y_min * H) - 10)
+                                text_to_display = f"{current_prediction} ({current_confidence:.2f})"
+                                text_size, _ = cv2.getTextSize(text_to_display, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
+                                text_x = x1_text
+                                text_y = y1_text - 10 if y1_text - 10 > text_size[1] else y1_text + text_size[1] + 30
+                                cv2.rectangle(display_frame, (text_x, text_y - text_size[1] - 5),
+                                              (text_x + text_size[0], text_y + 5), (0, 255, 0), -1)
+                                cv2.putText(display_frame, text_to_display, (text_x, text_y),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2, cv2.LINE_AA)
+                            except IndexError:
+                                 pass # Hand might have disappeared between detection and drawing
+                        # --- End Drawing Prediction Text ---
 
-                            text_to_display = f"{current_prediction} ({current_confidence:.2f})"
-                            text_size, _ = cv2.getTextSize(text_to_display, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
-                            # Position text above the hand box
-                            text_x = x1_text
-                            text_y = y1_text - 10 if y1_text - 10 > text_size[1] else y1_text + text_size[1] + 30
-
-                            # Draw background rectangle for text
-                            cv2.rectangle(display_frame, (text_x, text_y - text_size[1] - 5),
-                                          (text_x + text_size[0], text_y + 5), (0, 255, 0), -1) # Green background
-                            # Draw prediction text
-                            cv2.putText(display_frame, text_to_display, (text_x, text_y),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2, cv2.LINE_AA) # Black text
-                        except IndexError:
-                             print("Warning: Hand landmarks disappeared unexpectedly during drawing.")
-                        # --- End of Moved Drawing Block ---
-
-
-                        # --- Handle J/Z immediate addition OR set prediction for stability ---
-                        if current_prediction in ['J']:
-                            # Try to add J/Z immediately if cooldown allows and not duplicate
+                        # --- Handle J/Z or set prediction for stability check ---
+                        # (Logic remains the same)
+                        if current_prediction in ['J', 'Z']: # Check for Z as well if it's included
                             if not cooldown_active and (not sentence or sentence[-1] != current_prediction):
                                 sentence += current_prediction
-                                current_letter = current_prediction # Update last added
+                                current_letter = current_prediction
                                 cooldown_active = True
                                 cooldown_start = frame_time
                                 print(f"Added (Motion): {current_prediction} | Sentence: {sentence}")
-                                # Reset stability mechanisms after adding J/Z
                                 letter_history.clear()
                                 candidate_letter = None
-                            # Set 'prediction' to None for J/Z cases to bypass stability check below
-                            prediction = None
+                            prediction = None # Bypass stability
                         else:
-                            # It's not J or Z, assign it to 'prediction' for the stability check
-                            prediction = current_prediction
-                            # We already have current_confidence if needed later
+                            prediction = current_prediction # For stability check
 
         except Exception as e:
             print(f"Prediction error: {e}")
-            prediction = None # Ensure prediction is None on error
-
+            traceback.print_exc() # Print full traceback for prediction errors
+            prediction = None
 
     # --- 6. Letter Stability Check (for non-J/Z) ---
-    # This block only runs if 'prediction' is not None (i.e., a non-J/Z letter was predicted)
+    # (Logic remains the same)
     if prediction:
-        letter_history.append(prediction) # Add the potential stable letter to history
-
-        # Check if the history buffer is full enough to check stability
+        letter_history.append(prediction)
         if len(letter_history) >= stable_threshold:
-            # Find the most frequent letter in the recent history
             try:
                  most_common = max(set(letter_history), key=list(letter_history).count)
-                 # Check if it's consistently the most common
-                 # (e.g., >= 85% of the frames in the stable_threshold window)
                  if list(letter_history).count(most_common) >= int(0.85 * stable_threshold):
-                     # We have a stable candidate
                      if candidate_letter != most_common:
-                         # New stable candidate detected
                          candidate_letter = most_common
-                         letter_hold_start = frame_time # Start timer for hold duration
+                         letter_hold_start = frame_time
                      else:
-                         # Candidate is still the same, check hold time
                          held_time = frame_time - letter_hold_start
                          if held_time >= required_hold_time and not cooldown_active:
-                             # Check if it's different from the last *added* letter
                              if not sentence or sentence[-1] != most_common:
-                                 # Add the stable letter to the sentence!
                                  sentence += most_common
-                                 current_letter = most_common # Update last added
+                                 current_letter = most_common
                                  cooldown_active = True
                                  cooldown_start = frame_time
                                  print(f"Added: {most_common} | Sentence: {sentence}")
-                                 # Clear history and candidate after successful addition
                                  letter_history.clear()
                                  candidate_letter = None
-            except ValueError: # Handles case where letter_history might be empty unexpectedly
+            except ValueError:
                  pass
 
-
     # --- 7. Word Break Detection ---
-    # Check if hands have been absent for enough frames and sentence isn't empty/ending with space
+    # (Logic remains the same)
     if no_hand_count >= PAUSE_THRESHOLD_FRAMES and sentence and not sentence.endswith(" "):
         message_text = "Word break!"
-        message_until = frame_time + 2.0 # Show message for 2 seconds
+        message_until = frame_time + 2.0
         sentence += " "
         print("Added: [SPACE]")
-        # Reset states after adding space
         current_letter = None
         candidate_letter = None
         letter_history.clear()
-        # prediction_buffer.clear() # Also clear prediction buffer if using it
 
     # --- 8. Drawing Annotations ---
+    # (Drawing logic for FPS, Hand Count, Candidate, Cooldown, Sentence, Messages remains the same)
     font = cv2.FONT_HERSHEY_SIMPLEX
-
-    # FPS Display (Top Right)
+    # FPS
     fps = frame_count / (frame_time - start_time) if (frame_time - start_time) > 0 else 0
     cv2.putText(display_frame, f"FPS: {fps:.1f}", (W - 100, 30), font, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
-
-    # Hand Count Display (Top Left)
+    # Hand Count
     hands_text = f"Hands: {len(results.multi_hand_landmarks) if results.multi_hand_landmarks else 0}"
-    cv2.putText(display_frame, hands_text, (10, 30), font, 0.7, (0, 0, 255), 2, cv2.LINE_AA) # Red text
-
-    # Candidate Letter Status (Top Left)
+    cv2.putText(display_frame, hands_text, (10, 30), font, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
+    # Candidate
     if candidate_letter:
         held_time = frame_time - letter_hold_start
         hold_status = f"Candidate: {candidate_letter} ({held_time:.1f}s)"
-        cv2.putText(display_frame, hold_status, (10, 60), font, 0.7, (255, 255, 0), 2, cv2.LINE_AA) # Cyan text
-
-    # Cooldown Status (Top Left)
+        cv2.putText(display_frame, hold_status, (10, 60), font, 0.7, (255, 255, 0), 2, cv2.LINE_AA)
+    # Cooldown
     if cooldown_active:
         remaining = max(0, cooldown_time - (frame_time - cooldown_start))
         cooldown_text = f"Cooldown: {remaining:.1f}s"
-        cv2.putText(display_frame, cooldown_text, (10, 90), font, 0.7, (0, 165, 255), 2, cv2.LINE_AA) # Orange text
-
-    # Current Sentence Display (Bottom Left)
+        cv2.putText(display_frame, cooldown_text, (10, 90), font, 0.7, (0, 165, 255), 2, cv2.LINE_AA)
+    # Sentence
     sentence_display = f"Sentence: {sentence}"
     (tw, th), _ = cv2.getTextSize(sentence_display, font, 0.9, 2)
-    sx, sy = 10, H - 20 # Position near bottom left
-    # Background rectangle for sentence
-    cv2.rectangle(display_frame, (sx - 5, sy - th - 10), (sx + tw + 5, sy + 5), (50, 50, 50), -1) # Dark grey bg
-    cv2.putText(display_frame, sentence_display, (sx, sy), font, 0.9, (255, 255, 255), 2, cv2.LINE_AA) # White text
-
-    # Temporary Messages Display (Middle Top)
+    sx, sy = 10, H - 20
+    cv2.rectangle(display_frame, (sx - 5, sy - th - 10), (sx + tw + 5, sy + 5), (50, 50, 50), -1)
+    cv2.putText(display_frame, sentence_display, (sx, sy), font, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
+    # Message
     if message_text and frame_time < message_until:
         (mw, mh), _ = cv2.getTextSize(message_text, font, 1.0, 2)
-        mx = (W - mw) // 2 # Center horizontally
-        my = 60           # Position below FPS/Hand count
-        # Background rectangle for message
-        cv2.rectangle(display_frame, (mx - 10, my - mh - 10), (mx + mw + 10, my + 10), (0, 0, 0), -1) # Black bg
-        cv2.putText(display_frame, message_text, (mx, my), font, 1.0, (0, 255, 255), 2, cv2.LINE_AA) # Yellow text
+        mx = (W - mw) // 2 ; my = 60
+        cv2.rectangle(display_frame, (mx - 10, my - mh - 10), (mx + mw + 10, my + 10), (0, 0, 0), -1)
+        cv2.putText(display_frame, message_text, (mx, my), font, 1.0, (0, 255, 255), 2, cv2.LINE_AA)
     elif frame_time >= message_until:
-        message_text = "" # Clear message after duration
+        message_text = ""
 
-    # API Sentence Log Display 
+    # API Log Display 
     log_font_scale = 1.6
     log_thickness = 5
     log_color = (135, 206, 235) 
@@ -464,14 +450,13 @@ while True:
         cv2.putText(display_frame, logged_sentence, (lx, log_y), font, log_font_scale, log_color, log_thickness, cv2.LINE_AA)
 
 
-
     # --- 9. Display the Frame ---
     cv2.imshow(WINDOW_NAME, display_frame)
 
     # --- 10. Handle User Input ---
-    key = cv2.waitKey(1) & 0xFF # Wait 1ms for key press
+    key = cv2.waitKey(1) & 0xFF
 
-    # Analyze sentence with API ('a' key)
+    # Analyze sentence with API ('a' key) - Uncomment if using API
     if key == ord('a'):
         trimmed_sentence = sentence.strip()
         if trimmed_sentence:
@@ -510,15 +495,14 @@ while True:
             message_until = frame_time + 2.0
 
     # Quit ('q' or Esc key)
-    if key == ord('q') or key == 27: # 27 is the Esc key code
+    if key == ord('q') or key == 27:
         print("\nExiting...")
         break
 
 # --- 11. Cleanup ---
-cap.release() # Release the webcam
-cv2.destroyAllWindows() # Close all OpenCV windows
-# Add a small delay to ensure windows are closed properly, especially on some OS
+cap.release()
+cv2.destroyAllWindows()
 for i in range(5): cv2.waitKey(1)
 if 'hands' in locals() and hands:
-    hands.close() # Close the MediaPipe hands instance
+    hands.close()
 print("Resources released.")
