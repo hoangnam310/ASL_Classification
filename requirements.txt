@@ -1,3 +1,17 @@
+<<<<<<< HEAD
+<<<<<<< HEAD
+numpy==1.23.5
+opencv-python==4.7.0.68
+mediapipe==0.10.5
+torch==2.7.0
+torchvision==0.22.0
+matplotlib==3.9.4
+scikit-learn==1.2.0
+tqdm==4.67.1
+openai
+=======
+=======
+>>>>>>> 8801dc7a1a3bc404ef63c336ba814a4b0f8dc521
 google-generativeai
 python-dotenv
 opencv-python
@@ -23,4 +37,9 @@ openai
 # torchvision==0.22.0
 # matplotlib==3.9.4
 # scikit-learn==1.2.0
+<<<<<<< HEAD
 # tqdm==4.67.1
+>>>>>>> 5d7c504b6e717cd1c4306af13e49a71b3bb362a9
+=======
+# tqdm==4.67.1
+>>>>>>> 8801dc7a1a3bc404ef63c336ba814a4b0f8dc521

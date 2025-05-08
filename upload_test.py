@@ -67,8 +67,8 @@ class ASLRecognizer:
     """
     Main ASL recognition class that handles video processing and sign detection.
     """
-    def __init__(self, model_path: str = 'best_cnn_model_alphabet.pth', 
-                 label_map_path: str = 'label_map_alphabet.pickle'):
+    def __init__(self, model_path: str = 'models/best_cnn_model_alphabet_both.pth', 
+                 label_map_path: str = 'models/label_map_alphabet_both.pickle'):
         """
         Initialize the ASL recognizer with model and label mapping.
         
@@ -158,7 +158,7 @@ class ASLRecognizer:
             input_tensor = torch.FloatTensor(input_tensor).to(self.device)
             
             # Make prediction
-            with torch.no_grad():
+            with torch.inference_mode():
                 outputs = self.model(input_tensor)
                 probabilities = torch.nn.functional.softmax(outputs, dim=1)
                 confidence, predicted = torch.max(probabilities, 1)

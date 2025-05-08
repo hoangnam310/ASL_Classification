@@ -47,6 +47,7 @@ def analyze_asl_gemini(text):
         "Only output a sentence or short paragraph, without additional explanation or creative guessing.\n"
         "Only out put the constructed sentence, not the original sentence provided."
         "Make sentences grammatically correct from the keywords / spellings provided. Make it reasonable."
+        "SPECIAL NOTE: Me is the same as I, so when decoding, pick the option that makes more sense for the sentence."
         f"You are given a space-separated string of letters from a fingerspelling segment in ASL video: {text}. "
         "Reconstruct the most likely English sentence using these letters. Prioritize names, abbreviations, and realistic phrases. "
         "Return ONLY the reconstructed sentence or sentences."
