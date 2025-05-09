@@ -164,7 +164,7 @@ def process_hand_landmarks(landmarks, image_shape):
     }
 
 # --- Live Test Initialization ---
-cap = cv2.VideoCapture(0) # Use 0 for default webcam
+cap = cv2.VideoCapture(0, cv2.CAP_DSHOW) # Use 0 for default webcam
 if not cap.isOpened():
     print("Error: Could not open webcam.")
     exit()

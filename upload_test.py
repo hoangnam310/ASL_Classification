@@ -13,6 +13,11 @@ from pathlib import Path
 from tqdm import tqdm
 from typing import Dict, List, Tuple, Optional, Union, Any
 
+# Define model paths
+MODEL_SAVE_DIR = 'models'
+BEST_MODEL_PATH = os.path.join(MODEL_SAVE_DIR, 'best_lstm_model_sequences_sorted.pth')
+LABEL_MAP_PATH = os.path.join(MODEL_SAVE_DIR, 'label_map_sequences.pickle')
+
 
 class HandGestureCNN(nn.Module):
     """
@@ -67,8 +72,8 @@ class ASLRecognizer:
     """
     Main ASL recognition class that handles video processing and sign detection.
     """
-    def __init__(self, model_path: str = 'models/best_cnn_model_alphabet_both.pth', 
-                 label_map_path: str = 'models/label_map_alphabet_both.pickle'):
+    def __init__(self, model_path: str = BEST_MODEL_PATH, 
+                 label_map_path: str = LABEL_MAP_PATH):
         """
         Initialize the ASL recognizer with model and label mapping.
         
@@ -83,8 +88,8 @@ class ASLRecognizer:
         # Load label mapping
         with open(label_map_path, 'rb') as f:
             label_info = pickle.load(f)
-            self.label_map = label_info['label_map_alphabet']
-            self.reverse_label_map = label_info['reverse_label_map_alphabet']
+            self.label_map = label_info['label_map']
+            self.reverse_label_map = label_info['reverse_label_map']
         
         # Initialize model
         self.num_classes = len(self.label_map)
@@ -535,8 +540,8 @@ class ASLRecognizer:
 
 
 def process_folder(input_folder: str, output_video_folder: str, output_text_folder: str, 
-              model_path: str = 'best_cnn_model_alphabet.pth',
-              label_map_path: str = 'label_map_alphabet.pickle') -> List[Dict[str, Any]]:
+              model_path: str = BEST_MODEL_PATH,
+              label_map_path: str = LABEL_MAP_PATH) -> List[Dict[str, Any]]:
     """
     Process all videos in a folder.
     
@@ -544,8 +549,8 @@ def process_folder(input_folder: str, output_video_folder: str, output_text_fold
         input_folder: Path to the folder containing input videos
         output_video_folder: Path to save processed videos
         output_text_folder: Path to save text results
-        model_path: Path to the model file (default: 'best_cnn_model_alphabet.pth')
-        label_map_path: Path to the label mapping file (default: 'label_map_alphabet.pickle')
+        model_path: Path to the model file
+        label_map_path: Path to the label mapping file
         
     Returns:
         List of dictionaries with processing results
@@ -664,17 +669,13 @@ def main():
         print(f"Output text folder: {output_text_folder}")
         print("=====================")
         
-        # Check for required files
-        model_path = 'best_cnn_model_alphabet.pth'
-        label_map_path = 'label_map_alphabet.pickle'
-        
         # Process all videos in the folder
         results = process_folder(
             input_folder, 
             output_video_folder, 
             output_text_folder,
-            model_path=model_path,
-            label_map_path=label_map_path
+            model_path=BEST_MODEL_PATH,
+            label_map_path=LABEL_MAP_PATH
         )
         
         return results
