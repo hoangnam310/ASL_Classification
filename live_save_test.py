@@ -426,11 +426,11 @@ def record_with_realtime_recognition(output_dir_raw='./raw_videos', output_dir_a
         cv2.rectangle(display_frame, (frame_width - 250 - 5, 30 - 20), (frame_width - 250 + 230, 30 + 5), (0, 0, 0), -1)  # Black background
         cv2.putText(display_frame, "Press 'q' to save and exit", (frame_width - 250, 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-        cv2.rectangle(display_frame, (frame_width - 250 - 5, 50 - 20), (frame_width - 250 + 230, 50 + 5), (0, 0, 0), -1)
-        cv2.putText(display_frame, "Press 'r' to restart", (frame_width - 250, 50), 
+        cv2.rectangle(display_frame, (frame_width - 250 - 5, 60 - 20), (frame_width - 250 + 230, 60 + 5), (0, 0, 0), -1)
+        cv2.putText(display_frame, "Press 'r' to restart", (frame_width - 250, 60), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-        cv2.rectangle(display_frame, (frame_width - 250 - 5, 70 - 20), (frame_width - 250 + 230, 70 + 5), (0, 0, 0), -1)
-        cv2.putText(display_frame, "Press 'space' to pause/resume", (frame_width - 250, 70), 
+        cv2.rectangle(display_frame, (frame_width - 250 - 5, 90 - 20), (frame_width - 250 + 230, 90 + 5), (0, 0, 0), -1)
+        cv2.putText(display_frame, "Press 'space' to pause/resume", (frame_width - 250, 90), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
         
         # Display the frame
